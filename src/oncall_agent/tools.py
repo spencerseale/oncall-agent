@@ -407,6 +407,17 @@ def validate_fix(
 _SERVICE_NAMES = ", ".join(sorted(data.SERVICES))
 _TEAM_NAMES = ", ".join(data.TEAMS)
 _DOMAIN_NAMES = ", ".join(data.DOMAINS)
+# Advertise valid pairs before the first call, rather than teaching the agent
+# through failed lookups. Include dependencies with no telemetry explicitly.
+_TELEMETRY_SERVICES = (
+    set(data.SERVICES)
+    | {svc for svc, _ in data.METRIC_PROFILES}
+    | {dep for record in data.SERVICES.values() for dep in record.get("depends_on", [])}
+)
+_TELEMETRY_METRICS = json.dumps({
+    service: data.available_metrics(service)
+    for service in sorted(_TELEMETRY_SERVICES)
+}, sort_keys=True)
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
@@ -521,8 +532,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "Metric series for a service, with the baseline, range, and whether the "
                 "window deviates from baseline. Set around_incident to center the window "
                 "on the incident's start so the pre-incident baseline is visible next to "
-                "the anomaly. Metrics vary by service; an unknown metric returns the list "
-                "of available ones."
+                "the anomaly. Choose only a metric listed for the requested service. "
+                "An empty list means telemetry is unavailable, not that the service is "
+                "healthy. Do not query an unlisted pair or infer a missing metric is zero. "
+                f"Available metrics by service: {_TELEMETRY_METRICS}"
             ),
             "parameters": {
                 "type": "object",
@@ -531,9 +544,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "metric": {
                         "type": "string",
                         "description": (
-                            "e.g. http_5xx_rate, http_p99_latency_ms, db_pool_saturation, "
-                            "queue_depth, replication_lag_seconds, memory_used_ratio, "
-                            "throughput_rps, job_failure_count."
+                            "Choose from the requested service's available metrics in "
+                            "the tool description; metrics are not shared by all services."
                         ),
                     },
                     "around_incident": {
